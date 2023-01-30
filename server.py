@@ -3,6 +3,8 @@ import time
 import json
 import Adafruit_GPIO.SPI as SPI
 import Adafruit_SSD1306
+import Adafruit_DHT
+sensor = Adafruit_DHT.DHT11
 from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
@@ -14,7 +16,7 @@ import subprocess
 
 
 
-CHANNEL = "iot-channel"
+CHANNEL = "iot-demo"
 subscribe_key = "sub-c-920d39c8-ea66-4650-9eca-a2e9fd8ffc78"
 publish_key = "pub-c-5c55f43d-58e1-4070-97d2-a10bab46b15a"
 pnconfig = PNConfiguration()
@@ -50,7 +52,7 @@ GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
  
 #set GPIO Pins
-# GPIO_PUSH = 18
+GPIO_DHT = 23
 
 GPIO_BUZZER = 25
 GPIO_LIGHT = 24
@@ -65,6 +67,19 @@ GPIO.setup(GPIO_RELAY,GPIO.OUT)
 # GPIO.setup(GPIO_ECHO, GPIO.IN)
 
 #GPIO config ends
+def initiatePush():
+    flag = False
+    while True: # Run forever            
+        if GPIO.input(GPIO_PUSH) == GPIO.HIGH:
+            if flag == True:
+                flag = False
+                GPIO.setup(GPIO_BUZZER, GPIO.HIGH)
+                print("Button was pushed! True")
+            else:
+                flag = True
+                GPIO.setup(GPIO_BUZZER, GPIO.LOW)
+                print("Button was pushed! False")
+        time.sleep(0.5)
 
 def GpioToggle(GPIONumber, flag):
     print(GPIONumber)
@@ -90,6 +105,17 @@ def clearText():
     disp.image(image)
     disp.display()
 
+def getTempHum():
+    humidity, temperature = Adafruit_DHT.read_retry(sensor, GPIO_DHT)
+    pDict = dict();
+    cDict = dict();
+    pDict['event'] = "sensor"
+    cDict['temp'] = temperature
+    cDict['hum'] = humidity
+    pDict['data'] = cDict
+    json_object = json.dumps(pDict, indent = 4)
+    return json_object
+
 def publishMessage(message):
     envelope = pubnub.publish().channel(CHANNEL).message(message).sync()
     if envelope.status.is_error():
@@ -111,6 +137,9 @@ def subscribedMessages(message):
             displayLine1(jsonData["data"])
         elif jsonData["event"] == "relay":
             GpioToggle(GPIO_RELAY, jsonData["data"])
+        elif jsonData["event"] == "sensor-reload":
+            data = getTempHum()
+            publishMessage(data)
 
     else:
         print('Not a valid message data => """' + message + '"""')
@@ -122,6 +151,7 @@ def is_json(myjson):
   except ValueError:
     return False
   return True
+
 
 class MySubscribeCallback(SubscribeCallback):
     def presence(self, pubnub, presence):
@@ -149,13 +179,14 @@ pubnub.subscribe().channels(CHANNEL).execute()
 
 if __name__ == '__main__':
     try:
-        displayLine1("Raghul Selvam")
+        displayLine1("Welcome Back!")
+        # initiatePush()
         # GpioToggle(GPIO_RELAY, False)
         # GPIO.output(GPIO_RELAY,GPIO.LOW)
         # displayLine2("Raghul Selvam 2")
-        
+        # print("start")
         # Reset by pressing CTRL + C
     except KeyboardInterrupt:
         print("Keyboard interrupt by User")
         GPIO.cleanup()
-        clearText()
+        # clearText()
